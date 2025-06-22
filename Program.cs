@@ -4,7 +4,7 @@
     {
         static void Main(string[] args)
         {
-            NetworkManager netManger = new();
+            LobbyServer netManger = new();
 
             netManger.Connect();
 
