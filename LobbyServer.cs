@@ -8,11 +8,11 @@ using System.Threading.Tasks;
 
 public enum HeadType
 {
-    MapData,
+    MapData, MakeRoom
 }
 
 
-public class NetworkManager
+public class LobbyServer
 {
     public static IPAddress ServerIp;
     static int index = 5;
@@ -131,18 +131,22 @@ public class NetworkManager
         {
            MakeMapdate(data);
         }
+        else if(reqType == HeadType.MakeRoom)
+        {
+            SendRoomInfo(_obj);
+        }
     }
 
     private void MakeMapdate(byte[] data)
     {
-        List<GameMarkerData> markers = new List<GameMarkerData>();
+        List<ServerMarkerData> markers = new List<ServerMarkerData>();
         int index = 1;
         // 마커 수
         int markerCount = data[index++];
 
         for (int i = 0; i < markerCount; i++)
         {
-            GameMarkerData marker = new GameMarkerData();
+            ServerMarkerData marker = new ServerMarkerData();
 
             marker.markId = BitConverter.ToInt32(data, index);
             index += 4;
@@ -180,12 +184,36 @@ public class NetworkManager
 
     }
 
+
+    bool isMake = false;
+    private void SendRoomInfo(AsyncObject client)
+    {
+        int portNum = m_port + 1;
+
+        if(isMake == false)
+        {
+            //방이없으면 생성하고 연결 시작하고
+            RoomServer roomServer = new(ServerIp, portNum);
+            Console.WriteLine("로비서버에서 룸서버 생성");
+            roomServer.StartRoomServer();
+        }
+        /*
+         * [0] 헤드 넘버
+         * [1] 4바이트로 portNum 넘기기
+         */
+        List<byte> roomData = new();
+        roomData.Add((byte)HeadType.MakeRoom);
+        roomData.AddRange(BitConverter.GetBytes(portNum));
+        Console.WriteLine("로비서버에서 룸 포트넘버 전달");
+        SendData(client, roomData.ToArray());
+    }
+
+
     private void SendData(AsyncObject _obj, byte[] _msg)
     {
         //헤더작업 용량 길이 붙여주기 
         ushort msgLength = (ushort)_msg.Length;
-        byte[] msgLengthBuff = new byte[2];
-        msgLengthBuff = BitConverter.GetBytes(msgLength);
+        byte[] msgLengthBuff = EndianChanger.HostToNet(msgLength);
 
         byte[] originPacket = new byte[msgLengthBuff.Length + msgLength];
         Buffer.BlockCopy(msgLengthBuff, 0, originPacket, 0, msgLengthBuff.Length); //패킷 0부터 메시지 길이 버퍼 만큼 복사
