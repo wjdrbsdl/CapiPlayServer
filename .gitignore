@@ -1,1 +1,15 @@
 -e ".vs/\nbin/\nobj/" 
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+
+# Build
+bin/
+obj/
+*.exe
+*.dll
+
+# Others
+*.log
