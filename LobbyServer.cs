@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 public enum HeadType
 {
-    MapData, MakeRoom
+    MapDataUpload, MapDataDownload, MakeRoom,
 }
 
 
@@ -22,9 +22,12 @@ public class LobbyServer
     int m_port = 5000;
     public static byte failCode = 255;
 
+    private Dictionary<int, ServerMapData> mapDictionary;
+
     public void Connect()
     {
         Console.WriteLine("서버 연결 시작" + ParseCurIP.GetLocalIP());
+        mapDictionary = new();
         ServerIp = IPAddress.Parse(ParseCurIP.GetLocalIP());
         mainSock = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
         IPEndPoint serverEP = new IPEndPoint(IPAddress.Any, m_port);
@@ -127,9 +130,13 @@ public class LobbyServer
     {
         //
         HeadType reqType = (HeadType)data[0];
-        if (reqType == HeadType.MapData)
+        if (reqType == HeadType.MapDataUpload)
         {
            MakeMapdate(data);
+        }
+        else if (reqType == HeadType.MapDataDownload)
+        {
+            SendMapData(_obj, data);
         }
         else if(reqType == HeadType.MakeRoom)
         {
@@ -141,8 +148,12 @@ public class LobbyServer
     {
         List<ServerMarkerData> markers = new List<ServerMarkerData>();
         int index = 1;
+        int mapNumber = BitConverter.ToInt32(data, index);
+        index += 4;
+
         // 마커 수
-        int markerCount = data[index++];
+        int markerCount = BitConverter.ToInt32(data, index);
+        index += 4;
 
         for (int i = 0; i < markerCount; i++)
         {
@@ -182,8 +193,65 @@ public class LobbyServer
             Console.WriteLine($"{marker.name}생성 x{marker.positionX}:{marker.positionY}:{marker.positionZ}");
         }
 
+        if(mapDictionary.ContainsKey(mapNumber) == false)
+        {
+            mapDictionary.Add(mapNumber, null);
+        }
+        ServerMapData mapData = new ServerMapData(markers);
+        mapDictionary[mapNumber] = mapData;
     }
 
+    private void SendMapData(AsyncObject client, byte[] data)
+    {/*
+      * [0] 은 요청번호 다운로드
+      * [1] 부터 인트로 맵넘버
+      */
+        int mapNumber = BitConverter.ToInt32(data, 1); //맵 넘버 가져옴
+
+        List<byte> mapDataList = new();
+        mapDataList.Add((byte)HeadType.MapDataDownload); //요청번호
+        List<ServerMarkerData> markList = new();
+        if(mapDictionary.ContainsKey(mapNumber))
+        {
+            markList = mapDictionary[mapNumber].markerList;
+        }
+        //오브젝트 수
+        mapDataList.AddRange(BitConverter.GetBytes(markList.Count));
+
+        for (int i = 0; i < markList.Count; i++)
+        {
+            //게임마커 데이터를 바이트 화
+            ServerMarkerData marker = markList[i];
+
+            // Add integers (4 bytes each)
+            mapDataList.AddRange(BitConverter.GetBytes(marker.markId));
+            mapDataList.AddRange(BitConverter.GetBytes(marker.dropItemId));
+            mapDataList.Add((byte)marker.markerSpawnType); // Assuming enum fits in 1 byte
+            mapDataList.Add((byte)marker.markerType);      // Assuming enum fits in 1 byte
+
+            // Add string (length-prefixed)
+            byte[] nameBytes = System.Text.Encoding.UTF8.GetBytes(marker.name);
+            mapDataList.Add((byte)nameBytes.Length);       // Add string length (assuming < 256)
+            mapDataList.AddRange(nameBytes);               // Add string bytes
+
+            // Add remaining integers
+            mapDataList.AddRange(BitConverter.GetBytes(marker.spawnStep));
+            mapDataList.AddRange(BitConverter.GetBytes(marker.deleteStep));
+
+            //위치 포스
+            // Vector3 pos (float 3개 = 12바이트)
+            mapDataList.AddRange(BitConverter.GetBytes(marker.positionX));
+            mapDataList.AddRange(BitConverter.GetBytes(marker.positionY));
+            mapDataList.AddRange(BitConverter.GetBytes(marker.positionZ));
+
+            // Vector3 rot (float 3개 = 12바이트)
+            mapDataList.AddRange(BitConverter.GetBytes(marker.rotationX));
+            mapDataList.AddRange(BitConverter.GetBytes(marker.rotationY));
+            mapDataList.AddRange(BitConverter.GetBytes(marker.rotationZ));
+        }
+        Console.WriteLine($"{mapNumber}번 맵 오브젝트 수 {markList.Count}개 보냄");
+        SendData(client, mapDataList.ToArray());
+    }
 
     bool isMake = false;
     private void SendRoomInfo(AsyncObject client)

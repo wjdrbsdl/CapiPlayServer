@@ -24,6 +24,11 @@ public class ServerMapData
 
     }
 
+    public ServerMapData(List<ServerMarkerData> markList)
+    {
+        markerList = markList;
+    }
+
 
     public ServerMapData(ServerMapData origin)
     {
